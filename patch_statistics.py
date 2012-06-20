@@ -1,5 +1,5 @@
 import numpy as np
-from math import sqrt, pi, cos, sin, acos
+from math import sqrt, pi, cos, sin, acos, isnan
 from PIL import Image
 
 
@@ -61,13 +61,13 @@ def normalize(patch):
 def make_klein_sample(size):
     klein_sample = np.zeros((size, size, 8))
     for i in range(size):
-        print i
-        theta = i / (2*pi)
+        ##print i
+        theta = i / (pi)
         a, b = cos(theta), sin(theta)
         for j in range(size):
             phi = j / (2*pi)
             c, d = cos(phi), sin(phi)
-            P = lambda x, y: a * (c*x + d*y)**2 + b * (c*x + d*y)
+            P = lambda x, y: c * (a*x + b*y)**2 + d * (a*x + b*y)
             vect = np.array([P(x, y) for x in [-1, 0, 1] for y in [-1, 0, 1]])
             klein_sample[i, j] = normalize(vect)[0]
     return klein_sample
@@ -89,24 +89,35 @@ def project_into_sample(vect, sample_array):
     return min_i, min_j, min_dist
 
 
-def threshold_array(arr, thresh):
+def transform_array(arr):
     m, n = arr.shape
-    output = []
+    vects = np.zeros((m, n, 8))
+    d_norms = np.zeros((m, n))
     for i in range(1, m-1):
         print i
         for j in range(1, n-1):
             patch = list(arr[i-1:i+2, j-1:j+2].flat)
             patch = np.log(patch)
             vect, mean, d_norm = normalize(patch)
-            if d_norm > thresh:
-                output.append(vect)
-    return output
+            vects[i, j, :] = vect
+            d_norms[i, j] = d_norm
+    return vects, d_norms
 
 
+def threshold(vects, d_norms, thresh):
+    m, n = d_norms.shape
+    return [vects[i, j] for i in range(m) for j in range(n) if d_norms[i, j] > thresh]
 
-def array_stats(sample):
-    output = [project_into_sample(vect, Klein_sample) for vect in sample]
-    return output
+def array_stats(data):
+    output = []
+    K = np.zeros((sample_size, sample_size))
+    for i in xrange(len(data)):
+        if i % 500 == 0:
+            print i
+        i_coord, j_coord, min_dist = project_into_sample(data[i], Klein_sample)
+        output.append(min_dist)
+        K[i_coord, j_coord] += 1
+    return output, K
 
 
 img = Image.open("lena12.png")
