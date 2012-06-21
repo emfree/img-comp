@@ -62,10 +62,10 @@ def make_klein_sample(size):
     klein_sample = np.zeros((size, size, 8))
     for i in range(size):
         ##print i
-        theta = i / (pi)
+        theta = pi * i / size
         a, b = cos(theta), sin(theta)
         for j in range(size):
-            phi = j / (2*pi)
+            phi = 2 * pi * j / size
             c, d = cos(phi), sin(phi)
             P = lambda x, y: c * (a*x + b*y)**2 + d * (a*x + b*y)
             vect = np.array([P(x, y) for x in [-1, 0, 1] for y in [-1, 0, 1]])
@@ -79,14 +79,14 @@ Klein_sample = make_klein_sample(sample_size)
 
 def project_into_sample(vect, sample_array):
     m, n, d = sample_array.shape
-    min_dist = float("infinity")
+    max_dp = float("-infinity")
     for i in range(m):
         for j in range(n):
-            new_dist = arc_dist(vect, sample_array[i, j])
-            if new_dist < min_dist:
-                min_i, min_j = i, j
-                min_dist = new_dist
-    return min_i, min_j, min_dist
+            new_dp = np.dot(vect, sample_array[i, j])
+            if new_dp > max_dp:
+                best_i, best_j = i, j
+                max_dp = new_dp
+    return best_i, best_j, max_dp
 
 
 def transform_array(arr):
@@ -97,7 +97,7 @@ def transform_array(arr):
         print i
         for j in range(1, n-1):
             patch = list(arr[i-1:i+2, j-1:j+2].flat)
-            patch = np.log(patch)
+            ##patch = np.log(patch)
             vect, mean, d_norm = normalize(patch)
             vects[i, j, :] = vect
             d_norms[i, j] = d_norm
@@ -110,33 +110,23 @@ def threshold(vects, d_norms, thresh):
 
 def array_stats(data):
     output = []
-    K = np.zeros((sample_size, sample_size))
-    for i in xrange(len(data)):
-        if i % 500 == 0:
-            print i
+    K = sample_size * [sample_size * [[]]]
+    data_size = len(data)
+    incr = data_size / 20
+    for i in xrange(data_size):
+        if i % incr == 0:
+            print "%d percent done" % (5 * i / incr)
         i_coord, j_coord, min_dist = project_into_sample(data[i], Klein_sample)
         output.append(min_dist)
-        K[i_coord, j_coord] += 1
+        K[i_coord][j_coord].append(data[i]) ## now K is an array of lists.
+        ## Each list contains the S^7 vectors that got mapped to the corresponding Klein bottle point.
+        ## len(K[i][j] recovers the number of patches that got mapped to the pt.
     return output, K
 
 
 img = Image.open("lena12.png")
 arr = np.asarray(img)
 
-def pts_in_nbhd(src_pt, sample, max_dist):
-    output = []
-    for pt in sample:
-        d = arc_dist(pt, src_pt)
-        if d < max_dist:
-            output.append((pt, d))
-    return output
 
 
-def getdata(sample, max_dist):
-    data = np.zeros((32, 32))
-    for i in range(32):
-        print i
-        for j in range(32):
-            data[i, j] = len(pts_in_nbhd(Klein_sample[i,j,:], sample, max_dist))
-    return data
 
