@@ -110,7 +110,7 @@ def threshold(vects, d_norms, thresh):
 
 def array_stats(data):
     output = []
-    K = sample_size * [sample_size * [[]]]
+    K = [ [ [] for i in xrange(sample_size)] for j in xrange(sample_size)]
     data_size = len(data)
     incr = data_size / 20
     for i in xrange(data_size):
