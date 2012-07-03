@@ -1,4 +1,5 @@
 import numpy as np
+import heapq
 from math import sqrt, pi, cos, sin, acos, isnan
 from PIL import Image
 
@@ -104,12 +105,15 @@ def transform_array(arr):
     return vects, d_norms
 
 
-def threshold(vects, d_norms, thresh):
+def threshold(vects, d_norms, frac):
+    ## return top frac percent high-contrast patches
+    N = int(len(d_norms) * frac)
+    thresh = min(heapq.nlargest(N, d_norms.flat))
     m, n = d_norms.shape
     return [vects[i, j] for i in range(m) for j in range(n) if d_norms[i, j] > thresh]
 
 def array_stats(data):
-    output = []
+    distances = []
     K = [ [ [] for i in xrange(sample_size)] for j in xrange(sample_size)]
     data_size = len(data)
     incr = data_size / 20
@@ -117,15 +121,13 @@ def array_stats(data):
         if i % incr == 0:
             print "%d percent done" % (5 * i / incr)
         i_coord, j_coord, min_dist = project_into_sample(data[i], Klein_sample)
-        output.append(min_dist)
+        distances.append(min_dist)
         K[i_coord][j_coord].append(data[i]) ## now K is an array of lists.
         ## Each list contains the S^7 vectors that got mapped to the corresponding Klein bottle point.
         ## len(K[i][j] recovers the number of patches that got mapped to the pt.
-    return output, K
+    return distances, K
 
 
-img = Image.open("lena12.png")
-arr = np.asarray(img)
 
 
 
