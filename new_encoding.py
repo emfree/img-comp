@@ -1,7 +1,9 @@
 import numpy as np
 from math import sqrt, pi, cos, sin, acos
 from PIL import Image
-
+import matplotlib.pyplot as plt
+import e8
+S = e8.Shell(8)
 
 ## for simplicity, assume array dimensions are divisible by 3
 D = np.matrix([[2, -1, 0, -1, 0, 0, 0, 0, 0],
@@ -72,6 +74,8 @@ def project_whitened_array(array, quantized):
     m, n = array.shape
     projection = np.zeros((m / 3, n / 3))
     for i in range(0, m , 3):
+        if i % 10 == 0:
+            print i
         for j in range(0, n, 3):
             Y, X = slice(i, i + 3), slice(j, j + 3)
             r, s = i / 3, j / 3
@@ -81,7 +85,19 @@ def project_whitened_array(array, quantized):
     return projection
 
 
-
+def project_into_e8(array, S):
+    m, n = array.shape
+    projection = []
+    for i in range(0, m , 3):
+        if i % 10 == 0:
+            print i
+        for j in range(0, n, 3):
+            Y, X = slice(i, i + 3), slice(j, j + 3)
+            r, s = i / 3, j / 3
+            patch = array[Y, X].reshape(9)
+            patch = np.dot(Transform_array, patch)
+            projection.append(S.project(list(patch)))
+    return projection
 
 
 
