@@ -1,9 +1,8 @@
 import numpy as np
-from math import sqrt, pi, cos, sin, acos
+from math import sqrt, pi, cos, sin, acos, log
 from PIL import Image
 import matplotlib.pyplot as plt
 import e8
-S = e8.Shell(8)
 
 ## for simplicity, assume array dimensions are divisible by 3
 D = np.matrix([[2, -1, 0, -1, 0, 0, 0, 0, 0],
@@ -52,8 +51,10 @@ def make_klein_sample(parameters):
         c, d = cos(phi), sin(phi)
         P = lambda x, y: c * (a*x + b*y)**2 + d * (a*x + b*y)
         vect = np.array([P(x, y) for x in [-1, 0, 1] for y in [-1, 0, 1]])
+        vect -= np.average(vect)
+        vect /= sqrt(np.sum(vect**2))
         klein_vects.append(normalize(vect))
-        klein_patches.append(vect.reshape((3, 3))) ## todo: apply the appropriate transform
+        klein_patches.append(vect.reshape((3, 3))) ## patches are assumed to have Euclidean norm 1
     return klein_vects, klein_patches
 
 
@@ -69,10 +70,21 @@ def whiten_array(array):
     return whitened_array, means
 
 
+def contrasts(whitened_array):
+    m, n = whitened_array.shape
+    contrasts = np.copy(whitened_array)
+    for i in range(0, m, 3):
+        for j in range(0, n, 3):
+            Y, X = slice(i, i + 3), slice(j, j + 3)
+            contrast = np.sum(whitened_array[Y, X]**2)
+            contrasts[Y, X] = contrast
+    return contrasts
+            
+
 
 def project_whitened_array(array, quantized):
     m, n = array.shape
-    projection = np.zeros((m / 3, n / 3))
+    projection = np.zeros((m / 3, n / 3), dtype = np.int)
     for i in range(0, m , 3):
         if i % 10 == 0:
             print i
@@ -81,7 +93,7 @@ def project_whitened_array(array, quantized):
             r, s = i / 3, j / 3
             patch = array[Y, X].reshape(9)
             patch = np.dot(Transform_array, patch)
-            projection[r, s] = np.argmin([np.dot(v, patch) for v in quantized])
+            projection[r, s] = np.argmax([np.dot(v, patch) for v in quantized])
     return projection
 
 
@@ -100,7 +112,62 @@ def project_into_e8(array, S):
     return projection
 
 
+def encode(array, KV, KP):
+    W, M = whiten_array(array)
+    P = project_whitened_array(W, KV)
+    S = np.zeros((510, 510))
+    for i in range(0, 510, 3):
+        for j in range(0, 510, 3):
+            src = W[i:i+3, j:j+3].flat
+            proj = KP[P[i/3, j/3]].flat
+            scale = np.dot(src, proj)
+            S[i:i+3, j:j+3] = scale * np.ones((3, 3))
 
-##
+
+    S = S.astype(int)
+    M = M.astype(int)
+    return M, P, S
+
+
+def decode(M, P, S, KP):
+    RW = np.zeros((510, 510))
+    for i in range(0, 510, 3):
+        for j in range(0, 510, 3):
+            RW[i:i+3, j:j+3] = S[i, j] * KP[P[i/3, j/3]]
+
+    RI = (RW + M).astype(int)
+    return RI
+
+
+def frequency(arr):
+    ## assume arr is integer-valued
+    m = np.min(arr)
+    M = np.max(arr)
+    freq = []
+    for i in range(m, M + 1):
+        freq.append(np.sum(arr == i))
+    return freq
+
+def entropy(dist):
+    total = np.sum(dist)
+    return -sum(1. * x / total * log(1. * x / total, 2) for x in dist if x > 0)
+
+
+def compare_errors(error1, error2):
+    m, n = error1.shape
+    result = np.zeros((m, n), dtype = bool)
+    for i in range(0, m, 3):
+        for j in range(0, n, 3):
+            Y, X = slice(i, i + 3), slice(j, j + 3)
+            if np.sum(np.abs(error1[Y, X])) > np.sum(np.abs(error2[Y, X])):
+                result[Y, X] = np.ones((3, 3), dtype = bool)
+    return result
+
+
 img = Image.open("lena12.png")
-array = np.asarray(img)[ : 510, : 510]
+array = np.asarray(img)[ : 510, : 510].astype(np.float)
+KV, KP = make_klein_sample([(i * pi / 16, j * 2 * pi / 16) for i in range(16) for j in range(16)])
+#M, P, S = encode(array, KV, KP)
+#decoding = decode(M, P, S, KP)
+
+##S = e8.Shell(8)

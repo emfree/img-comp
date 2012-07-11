@@ -42,6 +42,10 @@ for i in range(10):
         draw_patch(array, 528 - (8 + 56*i), (8 + 56*j), make_patch(7*i, 7*j))
 
 
+img = Image.fromarray(array)
+img.show()
+
+
 
 
 img = Image.fromarray(array)
