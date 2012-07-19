@@ -2,11 +2,26 @@
 
 from numpy.lib.stride_tricks import as_strided
 import numpy as np
-from math import sqrt, pi, cos, sin
+from math import sqrt, pi, cos, sin, log
 from PIL import Image
+import matplotlib.pyplot as plt
 
 ##for now
 ##quantized: one patch / vector = one row
+
+def frequency(arr):
+    ## assume arr is integer-valued
+    m = np.min(arr)
+    M = np.max(arr)
+    freq = []
+    for i in range(m, M + 1):
+        freq.append(np.sum(arr == i))
+    return freq
+
+def entropy(dist):
+    total = np.sum(dist)
+    return -sum(1. * x / total * log(1. * x / total, 2) for x in dist if x > 0)
+
 
 
 D = np.matrix([[2, -1, 0, -1, 0, 0, 0, 0, 0],
@@ -87,7 +102,7 @@ def project(p_array, quantized):
     
 
 
-def encode(array, sphere_quantized, patch_quantized): ## TODO: get scale factors
+def encode(array, sphere_quantized, patch_quantized): 
     means, whitened = whiten(preprocess(array))
     projection = project(whitened, sphere_quantized)
     scales = np.apply_along_axis(sum, 0, patch_quantized[projection].T * whitened)
