@@ -8,14 +8,6 @@ import math
 cdef float pi = math.pi
 
 
-def zip_with_mul(A, B):
-    cdef int size = len(A)
-    cdef float acc = 0
-    cdef int i
-    for i in range(size):
-        acc += A[i] * B[i]
-    return acc
-
 
 def gaussian(np.ndarray[np.int_t, ndim=1] nbrs, int pixel):
     cdef int size = nbrs.size
@@ -27,7 +19,7 @@ def gaussian(np.ndarray[np.int_t, ndim=1] nbrs, int pixel):
     mean /= size
     for k in range(size):
         var += (nbrs[k] - mean)**2
-    var = max(var, 4)
+    var = max(var, 2)
     cdef float alpha = 1 / sqrt(2 * pi * var)
     cdef float beta = - 0.5 / var
     cdef float acc = 0

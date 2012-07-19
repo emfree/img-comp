@@ -4,7 +4,10 @@ from math import sqrt, pi, exp
 import types
 import numpy as np
 from PIL import Image
-from helper_routines import gaussian, combine_weights, zip_with_mul
+from helper_routines import gaussian, combine_weights
+
+def zipWith(func, A, B):
+    return [func(a, b) for a, b in zip(A, B)]
 
 
 
@@ -12,7 +15,7 @@ def predict(pixel, nbrs, experts, weights):
     '''Given weights w_1, ..., w_k and experts P_1, ..., P_k, return sum(w_i * P_i[pixel | nbrs])
     as well as updated weights w'_i = w_i * P_i[pixel | nbrs].'''
     expert_probabilities = [exp(nbrs, pixel) for exp in experts]
-    weighted_probabilities = (zip_with_mul(expert_probabilities, weights))
+    weighted_probabilities = (zipWith(mul, expert_probabilities, weights))
     aggregate_prob = sum(weighted_probabilities)
     new_local_weights = map(lambda w: w / aggregate_prob, weighted_probabilities)
     return aggregate_prob, new_local_weights
@@ -93,7 +96,10 @@ class Hierarchy:
     def entropy(self):
         return -np.sum(np.log2(self.probs[self.probs != 0]))
 
-    def display_probs(
+    def display_probs(self):
+        m = np.max(self.probs)
+        img = Image.fromarray((255 / m * probs).astype(np.uint8))
+        img.show()
 
 
 
