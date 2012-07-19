@@ -75,13 +75,12 @@ class Hierarchy:
                     for j in range(level, self.length, 2 * level):
                         ## get the set of neighbors for pixels on the boundary of the image:
                         if i == 0:
-                            nbr_indices = [(i + level, i, i), (j - level, j + level, j)]
+                            nbr_indices = [(i + level, i, i), (j, j - level, j + level)]
                         elif i == self.length - 1:
-                            nbr_indices = [(i - level, i, i), (j - level, j + level, j)]
+                            nbr_indices = [(i - level, i, i), (j, j - level, j + level)]
                         else:
                             nbr_indices = [(i, i, i - level, i + level), (j - level, j + level, j, j)]
                         self.process_pixel((i, j), nbr_indices)
-                        self.updated[i, j] = 1
                 else:
                     for j in range(0, self.length, 2 * level):
                         if j == 0:
@@ -98,7 +97,13 @@ class Hierarchy:
 
     def display_probs(self):
         m = np.max(self.probs)
-        img = Image.fromarray((255 / m * probs).astype(np.uint8))
+        img = Image.fromarray((255 / m * self.probs).astype(np.uint8))
+        img.show()
+    
+    def display_weights(self, expert_index):
+        arr = self.weight_array[:,:,expert_index]
+        m = np.max(self.weight_array)
+        img = Image.fromarray((255 / m * arr).astype(np.uint8))
         img.show()
 
 
