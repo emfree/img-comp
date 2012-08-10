@@ -18,3 +18,15 @@ def data(img):
 
 def bpredictor(B, M):
     return lambda v: average(M[B == v])
+
+
+def entropy(arr):
+    L = zeros(256)
+    for i in range(256):
+        L[i] = sum((arr % 256) == i)
+    L = L * 1. / sum(L)
+    return sum(L[L > 0] * log2(L[L > 0]))
+
+
+
+img = asarray(getimg(1), dtype = int)
