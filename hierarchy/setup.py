@@ -2,8 +2,7 @@ from distutils.core import setup
 from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
-ext_modules = [Extension("experts", ["experts.pyx"]),
-        Extension("pqueue", ["pqueue.pyx"]), Extension("aux", ["aux.pyx"]), Extension("hierarchy2", ["hierarchy2.pyx"]), Extension("cython_random_order", ["cython_random_order.pyx"])]
+ext_modules = [Extension("cython_test", ["cython_test.pyx"], language = 'c++'), Extension("cython_random_order", ["cython_random_order.pyx"], language = 'c++')]
 
 setup(
   name = 'experts',

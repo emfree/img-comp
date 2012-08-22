@@ -1,6 +1,7 @@
 from hierarchy2 import *
 from PIL import Image
 from numpy import *
+import cython_random_order as cro
 
 def path(n): return '../test-images/test-images-513/%03d-0.png' % n
 
@@ -29,4 +30,4 @@ def entropy(arr):
 
 
 
-img = asarray(getimg(1), dtype = int)
+img = asarray(getimg(1), dtype = int)[-129:, -129:]
