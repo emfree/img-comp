@@ -8,6 +8,7 @@ from libc.math cimport sqrt, exp
 from libcpp.vector cimport vector
 from math import log
 from numpy.linalg import lstsq
+from PIL import Image
 
 
 cdef: 
@@ -18,28 +19,46 @@ cdef:
         int x
 
 
+class pyNeighborData:
+    def __init__(self, offset, value, weight, y, x):
+        self.offset = offset
+        self.value = value
+        self.weight = weight
+        self.y = y
+        self.x = x
+    
+    def __cmp__(self, other):
+        return cmp(self.offset, other.offset)
+
+
+
+
+
 cpdef float dist(int x1, int y1, int x2, int y2):
     return sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 cdef tuple meanvar(vector[NeighborData] weighted_nbrs):
-    cdef float sum = 0
+    cdef float mean = 0
     cdef float sum_of_squares = 0
     for nbr in weighted_nbrs:
-        sum += nbr.weight * nbr.value
+        mean += nbr.weight * nbr.value
         sum_of_squares += nbr.weight * nbr.value**2
-    mean = sum / weighted_nbrs.size()
-    return mean, sum_of_squares / weighted_nbrs.size() - mean**2
+    return mean, sum_of_squares - mean**2
 
 
 ## todo: there should be a less ugly way to do this
-cpdef tuple pymeanvar(list index_value_tuples):
-    cdef float sum = 0
+cpdef tuple pymeanvar(list pynbrs):
+    ## tuple in index_value_tuple has form (a * y + b * x, value, weight, y, x)
+    cdef float mean = 0
     cdef float sum_of_squares = 0
-    for tuple in index_value_tuples:
-        sum += tuple[1]
-        sum_of_squares += tuple[1]**2
-    mean = 1. * sum / len(index_value_tuples)
-    return mean, 1. * sum_of_squares / len(index_value_tuples) - mean**2
+    wtsum = 0
+    for pynbr in pynbrs:
+        wtsum += pynbr.weight
+        mean += pynbr.weight * pynbr.value
+        sum_of_squares += pynbr.weight * pynbr.value**2
+    mean /= wtsum
+    sum_of_squares /= wtsum
+    return mean, sum_of_squares - mean**2
 
 
 
@@ -172,14 +191,14 @@ cdef float edge(vector[NeighborData] nbrs, int val):
     B = np.zeros(nbrs.size())
     cdef int i, thresh
     for i in range(nbrs.size()):
-        M[i] = [nbrs[i].y, nbrs[i].x, 1]
-        B[i] = nbrs[i].value
+        M[i] = [nbrs[i].weight * nbrs[i].y, nbrs[i].weight * nbrs[i].x, nbrs[i].weight]
+        B[i] = nbrs[i].weight * nbrs[i].value
     cdef float a, b, c
     a, b, c = lstsq(M, B)[0]
     ## list the neighbors sorted wrt the gradient given by (a, b)
     sorted_nbrs = []
     for nbr in nbrs:
-        bisect.insort(sorted_nbrs, (a * nbr.y + b * nbr.x, nbr.value, nbr.y, nbr.x))
+        bisect.insort(sorted_nbrs, pyNeighborData(a * nbr.y + b * nbr.x, nbr.value, nbr.weight, nbr.y, nbr.x))
     cdef int num_nbrs = len(sorted_nbrs)
     cdef float minerr = num_nbrs * 256**2
     cdef float mean1, mean2, E1, E2
@@ -193,11 +212,22 @@ cdef float edge(vector[NeighborData] nbrs, int val):
             minerr = E1 + E2
             thresh = i
             res_avgs = (mean1, mean2)
-    bdry = ((sorted_nbrs[thresh - 1][2] + sorted_nbrs[thresh][2]) / 2, (sorted_nbrs[thresh - 1][3] + sorted_nbrs[thresh][3])/2)
+    bdry = ((sorted_nbrs[thresh - 1].y + sorted_nbrs[thresh].y) / 2, (sorted_nbrs[thresh - 1].x + sorted_nbrs[thresh].x)/2)
     if a * bdry[0] + b * bdry[1] < 0: 
-        return res_avgs[1]
+        return int(res_avgs[1])
     else:
-        return res_avgs[0] ## TODO: replace by probability distribution
+        return int(res_avgs[0]) ## TODO: replace by probability distribution
+
+
+
+cdef float closest(vector[NeighborData] nbrs, int val):
+    cdef float maxweight = 0
+    cdef float nearestval = 0
+    for nbr in nbrs:
+        if nbr.weight > maxweight:
+            maxweight = nbr.weight
+            nearestval = nbr.value
+    return nearestval
 
 
 
@@ -206,19 +236,23 @@ def process(data, num_nbrs = 8, num_seeds = 8, expert = 'mvl'):
     cdef float (*func)(vector[NeighborData], int)
     if expert == 'mvl':
         func = &mvl
-    else:
+    elif expert == 'edge':
         func = &edge
+    elif expert == 'closest':
+        func = &closest
     prediction = np.zeros(data.shape, dtype = float)
     ## define a random ordering of the array locations in data
     ordering = np.random.permutation(data.size).reshape(data.shape)
-    print ordering
     ## create an iterator over data
     it = np.nditer(data, flags = ['multi_index'])
     cdef vector[NeighborData] nbrs
     while not it.finished:
         if ordering[it.multi_index] < num_seeds:
             ## just use the uniform distribution for the first num_seeds pixels
-            prediction[it.multi_index] = 1. / 256
+            if expert == 'mvl':
+                prediction[it.multi_index] = 1. / 256
+            else:
+                prediction[it.multi_index] = it[0]
         else:
             nbrs = nearest_neighbors(it.multi_index, data, ordering, num_nbrs)
             prediction[it.multi_index] = func(nbrs, it[0])
@@ -265,3 +299,143 @@ def entropy(error_arr):
     L = np.array([np.sum((error_arr) % 256 == i) for i in range(256)], dtype = float)
     L /= np.sum(L)
     return np.sum(L[L > 0] * np.log2(L[L > 0]))
+
+
+
+
+cdef tuple edgetest(vector[NeighborData] nbrs, int val):
+    M = np.zeros((nbrs.size(), 3))
+    B = np.zeros(nbrs.size())
+    cdef int i, thresh
+    for i in range(nbrs.size()):
+        M[i] = [nbrs[i].weight * nbrs[i].y, nbrs[i].weight * nbrs[i].x, nbrs[i].weight]
+        B[i] = nbrs[i].weight * nbrs[i].value
+    cdef float a, b, c
+    a, b, c = lstsq(M, B)[0]
+    ## list the neighbors sorted wrt the gradient given by (a, b)
+    sorted_nbrs = []
+    for nbr in nbrs:
+        bisect.insort(sorted_nbrs, pyNeighborData(a * nbr.y + b * nbr.x, nbr.value, nbr.weight, nbr.y, nbr.x))
+    cdef int num_nbrs = len(sorted_nbrs)
+    cdef float minerr = num_nbrs * 256**2
+    cdef float mean1, mean2, E1, E2
+    res_avgs = (128, 128)
+    thresh = 0
+    for i in range(1, num_nbrs - 1):
+        ## compute the average and squared error on each of the two regions
+        mean1, E1 = pymeanvar(sorted_nbrs[:i])
+        mean2, E2 = pymeanvar(sorted_nbrs[i:])
+        if E1 + E2 < minerr:
+            minerr = E1 + E2
+            thresh = i
+            res_avgs = (mean1, mean2)
+    bdry = ((sorted_nbrs[thresh - 1].y + sorted_nbrs[thresh].y) / 2, (sorted_nbrs[thresh - 1].x + sorted_nbrs[thresh].x)/2)
+    return (res_avgs[0], res_avgs[1], a * sorted_nbrs[thresh - 1].y + b * sorted_nbrs[thresh - 1].x, 
+            a * sorted_nbrs[thresh].y + b * sorted_nbrs[thresh].x)
+
+
+
+
+
+
+
+
+
+################
+#################
+
+def pynearest_neighbors(index, data, ordering, k):
+    y, x = index
+    nbrs = []
+    cdef int m = data.shape[0]
+    cdef int n = data.shape[1]
+    cdef int r = 1
+    cdef int i, j, s
+    cdef float weight
+    cdef float weightsum = 0
+    while len(nbrs) < k:
+        for s in range(8 * r):
+            boundarypt(y, x, r, s, &i, &j)
+            if len(nbrs) == k:
+                break
+            elif (0 <= i < m) and (0 <= j < n):
+                if ordering[i, j] < ordering[y, x]:
+                    weight = exp(-dist(i, j, y, x))
+                    weightsum += weight
+                    nbr = pyNeighborData(0, data[i, j], weight, i - y, j - x)
+                    nbrs.append(nbr)
+        r += 1
+    for i in range(len(nbrs)):
+        nbrs[i].weight /= weightsum
+    return nbrs
+
+
+
+
+def testprocess(data, num_nbrs = 8, num_seeds = 8):
+    assert num_seeds >= num_nbrs, "must have at least as many seeds as neighbors"
+    cdef float (*func)(vector[NeighborData], int)
+    prediction = np.zeros(data.shape, dtype = float)
+    viz = np.zeros((data.shape[0], data.shape[1], 3), dtype = np.uint8)
+    indices = [(i, j) for i in range(data.shape[0]) for j in range(data.shape[1])]
+    random.shuffle(indices)
+    count = 0
+    while not it.finished:
+        print it.multi_index
+        if ordering[it.multi_index] < num_seeds:
+            pass
+        else:
+            nbrs = pynearest_neighbors(it.multi_index, data, ordering, num_nbrs)
+            pred = edge2(nbrs, it[0])
+            prediction[it.multi_index] = pred
+            viz[it.multi_index] = [255 - int(pred), int(pred), 0]
+            Image.fromarray(viz).save("./tmp_images/%d.png" % count)
+        count += 1
+        it.iternext()
+    return prediction
+
+
+
+
+
+def edge2(nbrs, val):
+    min_err = 255**2 * len(nbrs)
+    for i in range(len(nbrs)):
+        for j in range(i + 1, len(nbrs)):
+            N = nbrs[i]
+            M = nbrs[j]
+            if N.x != M.x:
+                m = 1. * (M.y - N.y) / (M.x - N.x)
+                k = m * M.x - M.y
+                signfunc = lambda nbr: m * nbr.x - nbr.y - k
+                zeroregion = filter(lambda nbr: signfunc(nbr) == 0, nbrs)
+                zeroregion.sort(key = lambda nbr: nbr.x)
+            else:
+                m = 1. * (M.x - N.x) / (M.y - N.y)
+                k = m * M.y - M.x
+                signfunc = lambda nbr: m * nbr.y - nbr.x - k
+                zeroregion = filter(lambda nbr: signfunc(nbr) == 0, nbrs)
+                zeroregion.sort(key = lambda nbr: nbr.y)
+            posregion = filter(lambda nbr: signfunc(nbr) > 0, nbrs)
+            negregion = filter(lambda nbr: signfunc(nbr) < 0, nbrs)
+            for s in range(len(zeroregion)):
+                P = posregion + zeroregion[:s]
+                N = negregion + zeroregion[s:]
+                if len(P) > 0 and len(N) > 0:
+                    pos_mean, pos_err = pymeanvar(P)
+                    neg_mean, neg_err = pymeanvar(N)
+                    if pos_err + neg_err < min_err:
+                        min_err = pos_err + neg_err
+                        mean = neg_mean if k >= 0 else pos_mean
+            for k in range(len(zeroregion)):
+                P = posregion + zeroregion[s:]
+                N = negregion + zeroregion[:s]
+                if len(P) > 0 and len(N) > 0:
+                    pos_mean, pos_err = pymeanvar(P)
+                    neg_mean, neg_err = pymeanvar(N)
+                    if pos_err + neg_err < min_err:
+                        min_err = pos_err + neg_err
+                        mean = neg_mean if k >= 0 else pos_mean
+    return mean
+
+

@@ -6,13 +6,13 @@ from math import pi, sin, cos
 
 
 
-def random_edge():
-    edge = np.zeros((50, 50), dtype = int)
+def random_edge(size):
+    edge = np.zeros((size, size), dtype = int)
     angle = pi * random.random()
     print angle
-    for i in range(50):
-        for j in range(50):
-            if (i - 25) * cos(angle) + (j - 25) * sin(angle) >= 0:
+    for i in range(size):
+        for j in range(size):
+            if (i - size//2) * cos(angle) + (j - size//2) * sin(angle) >= 0:
                 edge[i, j] = 255
     ##Image.fromarray(edge.astype(np.uint8)).show()
     return edge
